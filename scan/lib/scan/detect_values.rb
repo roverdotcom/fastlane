@@ -136,7 +136,7 @@ module Scan
         ) do |set, device_string|
           pieces = device_string.split(regular_expression_for_split_on_whitespace_followed_by_parenthesized_version)
 
-          selector = ->(sim) { pieces.count > 0 && sim.name == pieces.first }
+          selector = ->(sim) { pieces.count > 0 && (sim.name == pieces.first || sim.udid == pieces.first) }
 
           set + (
             if pieces.count == 0
