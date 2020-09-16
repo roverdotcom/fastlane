@@ -79,8 +79,7 @@ module Spaceship
       end
 
       def ready_for_internal_testing?
-        raise "No build_beta_detail included" unless build_beta_detail
-        return build_beta_detail.ready_for_internal_testing?
+        return build_beta_detail.nil? == false && build_beta_detail.ready_for_internal_testing?
       end
 
       def ready_for_beta_submission?
@@ -130,6 +129,11 @@ module Spaceship
         return Spaceship::ConnectAPI.get_build(build_id: build_id, includes: includes).first
       end
 
+      def update(attributes: nil)
+        attributes = reverse_attr_mapping(attributes)
+        return Spaceship::ConnectAPI.patch_builds(build_id: id, attributes: attributes).first
+      end
+
       def add_beta_groups(beta_groups: nil)
         beta_groups ||= []
         beta_group_ids = beta_groups.map(&:id)
@@ -158,6 +162,10 @@ module Spaceship
 
       def post_beta_app_review_submission
         return Spaceship::ConnectAPI.post_beta_app_review_submissions(build_id: id)
+      end
+
+      def expire!
+        return Spaceship::ConnectAPI.patch_builds(build_id: id, attributes: { expired: true })
       end
     end
   end

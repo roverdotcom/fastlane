@@ -10,6 +10,22 @@ module Pilot
       user ||= CredentialsManager::AppfileConfig.try_fetch_value(:apple_id)
 
       [
+        FastlaneCore::ConfigItem.new(key: :api_key_path,
+                                     env_name: "PILOT_API_KEY_PATH",
+                                     description: "Path to your App Store Connect API key JSON file",
+                                     optional: true,
+                                     conflicting_options: [:username],
+                                     verify_block: proc do |value|
+                                       UI.user_error!("Couldn't find API key JSON file at path '#{value}'") unless File.exist?(value)
+                                     end),
+        FastlaneCore::ConfigItem.new(key: :api_key,
+                                     env_name: "PILOT_API_KEY",
+                                     description: "Path to your App Store Connect API key JSON file",
+                                     type: Hash,
+                                     optional: true,
+                                     sensitive: true,
+                                     conflicting_options: [:api_key_path, :username]),
+
         # app upload info
         FastlaneCore::ConfigItem.new(key: :username,
                                      short_option: "-u",
@@ -122,7 +138,7 @@ module Pilot
                                      short_option: "-w",
                                      optional: true,
                                      env_name: "PILOT_CHANGELOG",
-                                     description: "Provide the 'What to Test' text when uploading a new build. `skip_waiting_for_build_processing: false` is required to set the changelog"),
+                                     description: "Provide the 'What to Test' text when uploading a new build"),
         FastlaneCore::ConfigItem.new(key: :skip_submission,
                                      short_option: "-s",
                                      env_name: "PILOT_SKIP_SUBMISSION",
@@ -146,6 +162,12 @@ module Pilot
                                      default_value: false),
 
         # distribution
+        FastlaneCore::ConfigItem.new(key: :distribute_only,
+                                     short_option: "-D",
+                                     env_name: "PILOT_DISTRIBUTE_ONLY",
+                                     description: "Distribute a previously uploaded build (equivalent to the `fastlane pilot distribute` command)",
+                                     default_value: false,
+                                     type: Boolean),
         FastlaneCore::ConfigItem.new(key: :uses_non_exempt_encryption,
                                      short_option: "-X",
                                      env_name: "PILOT_USES_NON_EXEMPT_ENCRYPTION",
@@ -162,6 +184,19 @@ module Pilot
                                     env_name: "PILOT_NOTIFY_EXTERNAL_TESTERS",
                                     description: "Should notify external testers?",
                                     default_value: true),
+        FastlaneCore::ConfigItem.new(key: :app_version,
+                                     env_name: "PILOT_APP_VERSION",
+                                     description: "The version number of the application build to distribute. If the version number is not specified, then the most recent build uploaded to TestFlight will be distributed. If specified, the most recent build for the version number will be distributed",
+                                     optional: true),
+        FastlaneCore::ConfigItem.new(key: :build_number,
+                                     env_name: "PILOT_BUILD_NUMBER",
+                                     description: "The build number of the application build to distribute. If the build number is not specified, the most recent build is distributed",
+                                     optional: true),
+        FastlaneCore::ConfigItem.new(key: :expire_previous_builds,
+                                     is_string: false,
+                                     env_name: "PILOT_EXPIRE_PREVIOUS_BUILDS",
+                                     description: "Should expire previous builds?",
+                                     default_value: false),
 
         # testers
         FastlaneCore::ConfigItem.new(key: :first_name,

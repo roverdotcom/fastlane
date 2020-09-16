@@ -294,6 +294,10 @@ module FastlaneCore
       supported_platforms.include?(:iOS)
     end
 
+    def watchos?
+      supported_platforms.include?(:watchOS)
+    end
+
     def supported_platforms
       supported_platforms = build_settings(key: "SUPPORTED_PLATFORMS")
       if supported_platforms.nil?
@@ -316,6 +320,7 @@ module FastlaneCore
       proj << "-scheme #{options[:scheme].shellescape}" if options[:scheme]
       proj << "-project #{options[:project].shellescape}" if options[:project]
       proj << "-configuration #{options[:configuration].shellescape}" if options[:configuration]
+      proj << "-derivedDataPath #{options[:derived_data_path].shellescape}" if options[:derived_data_path]
       proj << "-xcconfig #{options[:xcconfig].shellescape}" if options[:xcconfig]
 
       if FastlaneCore::Helper.xcode_at_least?('11.0') && options[:cloned_source_packages_path]

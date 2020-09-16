@@ -1,4 +1,5 @@
 require 'fastlane_core/configuration/config_item'
+require 'fastlane/helper/lane_helper'
 require 'credentials_manager/appfile_config'
 require_relative 'module'
 
@@ -8,6 +9,15 @@ module Match
     def self.append_option(option)
       self.available_options # to ensure we created the initial `@available_options` array
       @available_options << option
+    end
+
+    def self.default_platform
+      case Fastlane::Helper::LaneHelper.current_platform.to_s
+      when "mac"
+        "macos"
+      else
+        "ios"
+      end
     end
 
     def self.available_options
@@ -131,14 +141,21 @@ module Match
                                      env_name: "MATCH_GIT_BASIC_AUTHORIZATION",
                                      sensitive: true,
                                      description: "Use a basic authorization header to access the git repo (e.g.: access via HTTPS, GitHub Actions, etc), usually a string in Base64",
-                                     conflicting_options: [:git_bearer_authorization],
+                                     conflicting_options: [:git_bearer_authorization, :git_private_key],
                                      optional: true,
                                      default_value: nil),
         FastlaneCore::ConfigItem.new(key: :git_bearer_authorization,
                                      env_name: "MATCH_GIT_BEARER_AUTHORIZATION",
                                      sensitive: true,
                                      description: "Use a bearer authorization header to access the git repo (e.g.: access to an Azure Devops repository), usually a string in Base64",
-                                     conflicting_options: [:git_basic_authorization],
+                                     conflicting_options: [:git_basic_authorization, :git_private_key],
+                                     optional: true,
+                                     default_value: nil),
+        FastlaneCore::ConfigItem.new(key: :git_private_key,
+                                     env_name: "MATCH_GIT_PRIVATE_KEY",
+                                     sensitive: true,
+                                     description: "Use a private key to access the git repo (e.g.: access to GitHub repository via Deploy keys), usually a id_rsa named file or the contents hereof",
+                                     conflicting_options: [:git_basic_authorization, :git_bearer_authorization],
                                      optional: true,
                                      default_value: nil),
 
@@ -157,6 +174,28 @@ module Match
         FastlaneCore::ConfigItem.new(key: :google_cloud_project_id,
                                      env_name: "MATCH_GOOGLE_CLOUD_PROJECT_ID",
                                      description: "ID of the Google Cloud project to use for authentication",
+                                     optional: true),
+
+        # Storage: S3
+        FastlaneCore::ConfigItem.new(key: :s3_region,
+                                     env_name: "MATCH_S3_REGION",
+                                     description: "Name of the S3 region",
+                                     optional: true),
+        FastlaneCore::ConfigItem.new(key: :s3_access_key,
+                                     env_name: "MATCH_S3_ACCESS_KEY",
+                                     description: "S3 access key",
+                                     optional: true),
+        FastlaneCore::ConfigItem.new(key: :s3_secret_access_key,
+                                     env_name: "MATCH_S3_SECRET_ACCESS_KEY",
+                                     description: "S3 secret access key",
+                                     optional: true),
+        FastlaneCore::ConfigItem.new(key: :s3_bucket,
+                                     env_name: "MATCH_S3_BUCKET",
+                                     description: "Name of the S3 bucket",
+                                     optional: true),
+        FastlaneCore::ConfigItem.new(key: :s3_object_prefix,
+                                     env_name: "MATCH_S3_OBJECT_PREFIX",
+                                     description: "Prefix to be used on all objects uploaded to S3",
                                      optional: true),
 
         # Keychain
@@ -196,18 +235,35 @@ module Match
         FastlaneCore::ConfigItem.new(key: :platform,
                                      short_option: '-o',
                                      env_name: "MATCH_PLATFORM",
-                                     description: "Set the provisioning profile's platform to work with (i.e. ios, tvos, macos)",
-                                     default_value: "ios",
+                                     description: "Set the provisioning profile's platform to work with (i.e. ios, tvos, macos, catalyst)",
+                                     default_value: default_platform,
+                                     default_value_dynamic: true,
                                      verify_block: proc do |value|
                                        value = value.to_s
-                                       pt = %w(tvos ios macos)
+                                       pt = %w(tvos ios macos catalyst)
                                        UI.user_error!("Unsupported platform, must be: #{pt}") unless pt.include?(value)
                                      end),
+        FastlaneCore::ConfigItem.new(key: :derive_catalyst_app_identifier,
+                                     env_name: "MATCH_DERIVE_CATALYST_APP_IDENTIFIER",
+                                     description: "Enable this if you have the Mac Catalyst capability enabled and your project was created with Xcode 11.3 or earlier. Prepends 'maccatalyst.' to the app identifier for the provisioning profile mapping",
+                                     type: Boolean,
+                                     default_value: false),
         FastlaneCore::ConfigItem.new(key: :template_name,
                                      env_name: "MATCH_PROVISIONING_PROFILE_TEMPLATE_NAME",
                                      description: "The name of provisioning profile template. If the developer account has provisioning profile templates (aka: custom entitlements), the template name can be found by inspecting the Entitlements drop-down while creating/editing a provisioning profile (e.g. \"Apple Pay Pass Suppression Development\")",
                                      optional: true,
                                      default_value: nil),
+        FastlaneCore::ConfigItem.new(key: :profile_name,
+                                    env_name: "MATCH_PROVISIONING_PROFILE_NAME",
+                                    description: "A custom name for the provisioning profile. This will replace the default provisioning profile name if specified",
+                                    optional: true,
+                                    default_value: nil),
+        FastlaneCore::ConfigItem.new(key: :fail_on_name_taken,
+                                     env_name: "MATCH_FAIL_ON_NAME_TAKEN",
+                                     description: "Should the command fail if it was about to create a duplicate of an existing provisioning profile. It can happen due to issues on Apple Developer Portal, when profile to be recreated was not properly deleted first",
+                                     optional: true,
+                                     type: Boolean,
+                                     default_value: false),
         FastlaneCore::ConfigItem.new(key: :output_path,
                                      env_name: "MATCH_OUTPUT_PATH",
                                      description: "Path in which to export certificates, key and profile",

@@ -4,6 +4,7 @@ AndroidPublisher = Google::Apis::AndroidpublisherV3
 
 require 'net/http'
 
+# rubocop:disable Metrics/ClassLength
 module Supply
   class AbstractGoogleServiceClient
     SCOPE = nil
@@ -244,7 +245,7 @@ module Supply
         UI.message("Found '#{version}' in '#{filtered_track.track}' track.")
       end
 
-      filtered_release = filtered_track.releases.first { |r| r.name == version }
+      filtered_release = filtered_track.releases.first { |r| !r.name.nil? && r.name == version }
 
       # Since we can release on Alpha/Beta without release notes.
       if filtered_release.release_notes.nil?
@@ -258,13 +259,13 @@ module Supply
     end
 
     def latest_version(track)
-      latest_version = tracks.select { |t| t.track == Supply::Tracks::DEFAULT }.map(&:releases).flatten.max_by(&:name)
+      latest_version = tracks.select { |t| t.track == Supply::Tracks::DEFAULT }.map(&:releases).flatten.reject { |r| r.name.nil? }.max_by(&:name)
 
       # Check if user specified '--track' option if version information from 'production' track is nil
       if latest_version.nil? && track == Supply::Tracks::DEFAULT
         UI.user_error!(%(Unable to find latest version information from "#{Supply::Tracks::DEFAULT}" track. Please specify track information by using the '--track' option.))
       else
-        latest_version = tracks.select { |t| t.track == track }.map(&:releases).flatten.max_by(&:name)
+        latest_version = tracks.select { |t| t.track == track }.map(&:releases).flatten.reject { |r| r.name.nil? }.max_by(&:name)
       end
 
       return latest_version
@@ -346,7 +347,8 @@ module Supply
           current_package_name,
           self.current_edit.id,
           upload_source: path_to_aab,
-          content_type: "application/octet-stream"
+          content_type: "application/octet-stream",
+          ack_bundle_installation_warning: Supply.config[:ack_bundle_installation_warning]
         )
       end
 
@@ -404,6 +406,23 @@ module Supply
           track
         )
         return result.releases.flat_map(&:version_codes) || []
+      rescue Google::Apis::ClientError => e
+        return [] if e.status_code == 404 && (e.to_s.include?("trackEmpty") || e.to_s.include?("Track not found"))
+        raise
+      end
+    end
+
+    # Get list of release names for track
+    def track_releases(track)
+      ensure_active_edit!
+
+      begin
+        result = client.get_edit_track(
+          current_package_name,
+          current_edit.id,
+          track
+        )
+        return result.releases || []
       rescue Google::Apis::ClientError => e
         return [] if e.status_code == 404 && e.to_s.include?("trackEmpty")
         raise
@@ -529,3 +548,4 @@ module Supply
     end
   end
 end
+# rubocop:enable Metrics/ClassLength

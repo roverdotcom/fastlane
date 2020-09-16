@@ -23,23 +23,24 @@ module Gym
 
       FileUtils.mkdir_p(File.expand_path(Gym.config[:output_directory]))
 
-      # Determine platform to archive
-      is_mac = Gym.project.mac? || Gym.building_mac_catalyst_for_mac?
-      is_ios = !is_mac && (Gym.project.ios? || Gym.project.tvos?)
-
       # Archive
-      if is_ios
-        fix_generic_archive # See https://github.com/fastlane/fastlane/pull/4325
+      if Gym.building_for_ios?
+        fix_generic_archive unless Gym.project.watchos? # See https://github.com/fastlane/fastlane/pull/4325
         return BuildCommandGenerator.archive_path if Gym.config[:skip_package_ipa]
 
         package_app
         compress_and_move_dsym
-        path = move_ipa
-        move_manifest
-        move_app_thinning
-        move_app_thinning_size_report
-        move_apps_folder
-      elsif is_mac
+
+        unless Gym.export_destination_upload?
+          path = move_ipa
+          move_manifest
+          move_app_thinning
+          move_app_thinning_size_report
+          move_apps_folder
+          move_asset_packs
+          move_appstore_info
+        end
+      elsif Gym.building_for_mac?
         path = File.expand_path(Gym.config[:output_directory])
         compress_and_move_dsym
         if Gym.project.mac_app? || Gym.building_mac_catalyst_for_mac?
@@ -47,13 +48,17 @@ module Gym
           return path if Gym.config[:skip_package_pkg]
 
           package_app
-          path = move_pkg
+          unless Gym.export_destination_upload?
+            path = move_pkg
+            move_appstore_info
+          end
           return path
         end
         copy_files_from_path(File.join(BuildCommandGenerator.archive_path, "Products/usr/local/bin/*")) if Gym.project.command_line_tool?
       end
       return path
     end
+    # rubocop:enable Metrics/PerceivedComplexity
 
     #####################################################
     # @!group Printing out things
@@ -270,11 +275,14 @@ module Gym
       app_path = File.join(BuildCommandGenerator.archive_path, "Products/Applications/#{exe_name}.app")
 
       UI.crash!("Couldn't find application in '#{BuildCommandGenerator.archive_path}'") unless File.exist?(app_path)
+
+      joined_app_path = File.join(Gym.config[:output_directory], File.basename(app_path))
+      FileUtils.rm_rf(joined_app_path)
       FileUtils.cp_r(app_path, File.expand_path(Gym.config[:output_directory]), remove_destination: true)
-      app_path = File.join(Gym.config[:output_directory], File.basename(app_path))
+
       UI.success("Successfully exported the .app file:")
-      UI.message(app_path)
-      app_path
+      UI.message(joined_app_path)
+      joined_app_path
     end
 
     # Move the manifest.plist if exists into the output directory
@@ -322,6 +330,31 @@ module Gym
         UI.success("Successfully exported Apps folder:")
         UI.message(apps_path)
         apps_path
+      end
+    end
+
+    # Move Asset Packs folder to the output directory
+    # @return (String) The path to the resulting Asset Packs (aka OnDemandResources) folder
+    def move_asset_packs
+      if Dir.exist?(PackageCommandGenerator.asset_packs_path)
+        FileUtils.mv(PackageCommandGenerator.asset_packs_path, File.expand_path(Gym.config[:output_directory]), force: true)
+        asset_packs_path = File.join(File.expand_path(Gym.config[:output_directory]), File.basename(PackageCommandGenerator.asset_packs_path))
+
+        UI.success("Successfully exported Asset Pack folder:")
+        UI.message(asset_packs_path)
+        asset_packs_path
+      end
+    end
+
+    # Move the AppStoreInfo.plist folder to the output directory
+    def move_appstore_info
+      if File.exist?(PackageCommandGenerator.appstore_info_path)
+        FileUtils.mv(PackageCommandGenerator.appstore_info_path, File.expand_path(Gym.config[:output_directory]), force: true)
+        appstore_info_path = File.join(File.expand_path(Gym.config[:output_directory]), File.basename(PackageCommandGenerator.appstore_info_path))
+
+        UI.success("Successfully exported the AppStoreInfo.plist file:")
+        UI.message(appstore_info_path)
+        appstore_info_path
       end
     end
 

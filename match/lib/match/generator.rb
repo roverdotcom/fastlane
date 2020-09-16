@@ -14,7 +14,13 @@ module Match
         specific_cert_type = cert_type.to_s
       end
 
+      platform = params[:platform]
+      if platform.to_s == :catalyst.to_s
+        platform = :macos.to_s
+      end
+
       arguments = FastlaneCore::Configuration.create(Cert::Options.available_options, {
+        platform: platform,
         development: params[:type] == "development",
         type: specific_cert_type,
         generate_apple_certs: params[:generate_apple_certs],
@@ -60,7 +66,11 @@ module Match
         names << params[:platform]
       end
 
-      profile_name = names.join(" ")
+      if params[:profile_name].to_s.empty?
+        profile_name = names.join(" ")
+      else
+        profile_name = params[:profile_name]
+      end
 
       values = {
         app_identifier: app_identifier,
@@ -72,7 +82,8 @@ module Match
         ignore_profiles_with_different_name: true,
         team_id: params[:team_id],
         team_name: params[:team_name],
-        template_name: params[:template_name]
+        template_name: params[:template_name],
+        fail_on_name_taken: params[:fail_on_name_taken]
       }
 
       values[:platform] = params[:platform]
