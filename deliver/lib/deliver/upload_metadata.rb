@@ -1,4 +1,7 @@
+require 'spaceship'
+
 require_relative 'module'
+require_relative 'queue_worker'
 
 module Deliver
   # upload description, rating, etc.
@@ -96,7 +99,7 @@ module Deliver
 
         if v.nil?
           UI.message("Couldn't find live version, editing the current version on App Store Connect instead")
-          version = app.get_edit_app_store_version(platform: platform)
+          version = fetch_edit_app_store_version(app, platform)
           # we don't want to update the localised_options and non_localised_options
           # as we also check for `options[:edit_live]` at other areas in the code
           # by not touching those 2 variables, deliver is more consistent with what the option says
@@ -105,7 +108,7 @@ module Deliver
           UI.message("Found live version")
         end
       else
-        version = app.get_edit_app_store_version(platform: platform)
+        version = fetch_edit_app_store_version(app, platform)
         localised_options = (LOCALISED_VERSION_VALUES.keys + LOCALISED_APP_VALUES.keys)
         non_localised_options = NON_LOCALISED_VERSION_VALUES.keys
       end
@@ -175,38 +178,51 @@ module Deliver
 
                        non_localized_version_attributes['earliestReleaseDate'] = date
                        Spaceship::ConnectAPI::AppStoreVersion::ReleaseType::SCHEDULED
-                     elsif options[:automatic_release]
+                     elsif options[:automatic_release] == true
                        Spaceship::ConnectAPI::AppStoreVersion::ReleaseType::AFTER_APPROVAL
-                     else
+                     elsif options[:automatic_release] == false
                        Spaceship::ConnectAPI::AppStoreVersion::ReleaseType::MANUAL
                      end
-      non_localized_version_attributes['releaseType'] = release_type
+      if release_type.nil?
+        UI.important("Release type will not be set because neither `automatic_release` nor `auto_release_date` were provided. Please explicitly set one of these options if you need a release type set")
+      else
+        non_localized_version_attributes['releaseType'] = release_type
+      end
 
       # Update app store version
       # This needs to happen before updating localizations (https://openradar.appspot.com/radar?id=4925914991296512)
+      #
+      # Adding some sleeps because the API will sometimes be in a state where releaseType can't be modified
+      #   https://github.com/fastlane/fastlane/issues/16911
       UI.message("Uploading metadata to App Store Connect for version")
+      sleep(2)
       version.update(attributes: non_localized_version_attributes)
+      sleep(1)
 
       # Update app store version localizations
-      app_store_version_localizations.each do |app_store_version_localization|
+      store_version_worker = Deliver::QueueWorker.new do |app_store_version_localization|
         attributes = localized_version_attributes_by_locale[app_store_version_localization.locale]
         if attributes
           UI.message("Uploading metadata to App Store Connect for localized version '#{app_store_version_localization.locale}'")
           app_store_version_localization.update(attributes: attributes)
         end
       end
+      store_version_worker.batch_enqueue(app_store_version_localizations)
+      store_version_worker.start
 
       # Update app info localizations
-      app_info_localizations.each do |app_info_localization|
+      app_info_worker = Deliver::QueueWorker.new do |app_info_localization|
         attributes = localized_info_attributes_by_locale[app_info_localization.locale]
         if attributes
           UI.message("Uploading metadata to App Store Connect for localized info '#{app_info_localization.locale}'")
           app_info_localization.update(attributes: attributes)
         end
       end
+      app_info_worker.batch_enqueue(app_info_localizations)
+      app_info_worker.start
 
       # Update categories
-      app_info = app.fetch_edit_app_info
+      app_info = fetch_edit_app_info(app)
       if app_info
         category_id_map = {}
 
@@ -361,9 +377,7 @@ module Deliver
       # Check folder list (an empty folder signifies a language is required)
       ignore_validation = options[:ignore_language_directory_validation]
       Loader.language_folders(options[:metadata_path], ignore_validation).each do |lang_folder|
-        next unless File.directory?(lang_folder) # We don't want to read txt as they are non localised
-        language = File.basename(lang_folder)
-        enabled_languages << language unless enabled_languages.include?(language)
+        enabled_languages << lang_folder.basename unless enabled_languages.include?(lang_folder.basename)
       end
 
       return unless enabled_languages.include?("default")
@@ -402,10 +416,7 @@ module Deliver
       # Check folder list (an empty folder signifies a language is required)
       ignore_validation = options[:ignore_language_directory_validation]
       Loader.language_folders(options[:metadata_path], ignore_validation).each do |lang_folder|
-        next unless File.directory?(lang_folder) # We don't want to read txt as they are non localised
-
-        language = File.basename(lang_folder)
-        enabled_languages << language unless enabled_languages.include?(language)
+        enabled_languages << lang_folder.basename unless enabled_languages.include?(lang_folder.basename)
       end
 
       # Mapping to strings because :default symbol can be passed in
@@ -414,9 +425,35 @@ module Deliver
         .uniq
     end
 
+    def fetch_edit_app_store_version(app, platform, wait_time: 10)
+      retry_if_nil("Cannot find edit app store version", wait_time: wait_time) do
+        app.get_edit_app_store_version(platform: platform)
+      end
+    end
+
+    def fetch_edit_app_info(app, wait_time: 10)
+      retry_if_nil("Cannot find edit app info", wait_time: wait_time) do
+        app.fetch_edit_app_info
+      end
+    end
+
+    def retry_if_nil(message, tries: 5, wait_time: 10)
+      loop do
+        tries -= 1
+
+        value = yield
+        return value if value
+
+        UI.message("#{message}... Retrying after #{wait_time} seconds (remaining: #{tries})")
+        sleep(wait_time)
+
+        return nil if tries.zero?
+      end
+    end
+
     # Finding languages to enable
     def verify_available_info_languages!(options, app, languages)
-      app_info = app.fetch_edit_app_info
+      app_info = fetch_edit_app_info(app)
 
       unless app_info
         UI.user_error!("Cannot update languages - could not find an editable info")
@@ -451,7 +488,7 @@ module Deliver
     # Finding languages to enable
     def verify_available_version_languages!(options, app, languages)
       platform = Spaceship::ConnectAPI::Platform.map(options[:platform])
-      version = app.get_edit_app_store_version(platform: platform)
+      version = fetch_edit_app_store_version(app, platform)
 
       unless version
         UI.user_error!("Cannot update languages - could not find an editable version for '#{platform}'")
@@ -490,14 +527,13 @@ module Deliver
       # Load localised data
       ignore_validation = options[:ignore_language_directory_validation]
       Loader.language_folders(options[:metadata_path], ignore_validation).each do |lang_folder|
-        language = File.basename(lang_folder)
         (LOCALISED_VERSION_VALUES.keys + LOCALISED_APP_VALUES.keys).each do |key|
-          path = File.join(lang_folder, "#{key}.txt")
+          path = File.join(lang_folder.path, "#{key}.txt")
           next unless File.exist?(path)
 
           UI.message("Loading '#{path}'...")
           options[key] ||= {}
-          options[key][language] ||= File.read(path)
+          options[key][lang_folder.basename] ||= File.read(path)
         end
       end
 
@@ -558,6 +594,7 @@ module Deliver
     def set_review_information(version, options)
       return unless options[:app_review_information]
       info = options[:app_review_information]
+      info = info.collect { |k, v| [k.to_sym, v] }.to_h
       UI.user_error!("`app_review_information` must be a hash", show_github_issues: true) unless info.kind_of?(Hash)
 
       attributes = {}
