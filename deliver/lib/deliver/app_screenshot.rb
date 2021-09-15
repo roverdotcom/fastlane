@@ -195,7 +195,9 @@ module Deliver
         ],
         ScreenSize::IOS_58_MESSAGES => [
           [1125, 2436],
-          [2436, 1125]
+          [2436, 1125],
+          [1170, 2532],
+          [2532, 1170]
         ],
         ScreenSize::IOS_55_MESSAGES => [
           [1242, 2208],
@@ -253,7 +255,9 @@ module Deliver
         ],
         ScreenSize::IOS_58 => [
           [1125, 2436],
-          [2436, 1125]
+          [2436, 1125],
+          [1170, 2532],
+          [2532, 1170]
         ],
         ScreenSize::IOS_55 => [
           [1242, 2208],
@@ -320,7 +324,8 @@ module Deliver
       is_3rd_gen = [
         "iPad Pro (12.9-inch) (3rd generation)", # default simulator name has this
         "iPad Pro (12.9-inch) (4th generation)", # default simulator name has this
-        "ipadPro129" # downloaded screenshots name has this
+        "ipadPro129", # downloaded screenshots name has this,
+        "3GEN" # downloaded screenshots name from App Store Connect API has this
       ].any? { |key| filename.include?(key) }
       if is_3rd_gen
         if screen_size == ScreenSize::IOS_IPAD_PRO

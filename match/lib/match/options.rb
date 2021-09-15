@@ -74,7 +74,7 @@ module Match
 
         # App Store Connect API
         FastlaneCore::ConfigItem.new(key: :api_key_path,
-                                     env_name: "SIGH_API_KEY_PATH",
+                                     env_names: ["SIGH_API_KEY_PATH", "APP_STORE_CONNECT_API_KEY_PATH"],
                                      description: "Path to your App Store Connect API Key JSON file (https://docs.fastlane.tools/app-store-connect-api/#using-fastlane-api-key-json-file)",
                                      optional: true,
                                      conflicting_options: [:api_key],
@@ -82,7 +82,7 @@ module Match
                                        UI.user_error!("Couldn't find API key JSON file at path '#{value}'") unless File.exist?(value)
                                      end),
         FastlaneCore::ConfigItem.new(key: :api_key,
-                                     env_name: "SIGH_API_KEY",
+                                     env_names: ["SIGH_API_KEY", "APP_STORE_CONNECT_API_KEY"],
                                      description: "Your App Store Connect API Key information (https://docs.fastlane.tools/app-store-connect-api/#use-return-value-and-pass-in-as-an-option)",
                                      type: Hash,
                                      optional: true,
@@ -207,6 +207,7 @@ module Match
         FastlaneCore::ConfigItem.new(key: :s3_secret_access_key,
                                      env_name: "MATCH_S3_SECRET_ACCESS_KEY",
                                      description: "S3 secret access key",
+                                     sensitive: true,
                                      optional: true),
         FastlaneCore::ConfigItem.new(key: :s3_bucket,
                                      env_name: "MATCH_S3_BUCKET",
@@ -238,7 +239,7 @@ module Match
                                      default_value: false),
         FastlaneCore::ConfigItem.new(key: :force_for_new_devices,
                                      env_name: "MATCH_FORCE_FOR_NEW_DEVICES",
-                                     description: "Renew the provisioning profiles if the device count on the developer portal has changed. Ignored for profile type 'appstore'",
+                                     description: "Renew the provisioning profiles if the device count on the developer portal has changed. Ignored for profile types 'appstore' and 'developer_id'",
                                      type: Boolean,
                                      default_value: false),
         FastlaneCore::ConfigItem.new(key: :skip_confirmation,
